@@ -1,80 +1,5 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2021-2025 community-scripts ORG
-# Author: Blake (harms-haus)
-# License: MIT | https://github.com/community-scripts/ProxmoxVE/raw/main/LICENSE
-# Source: https://github.com/harms-haus/speaches
-
-set -e
-set -o pipefail
-
-# Setup colors
-YW=$(echo "\033[33m")
-BL=$(echo "\033[34m")
-HA=$(echo "\033[1;34m")
-GN=$(echo "\033[32m")
-RD=$(echo "\033[31m")
-CL=$(echo "\033[m")
-BGN=$(echo "\033[4;32m")
-CREATING=$(echo "\033[1;32m")
-TAB=$(echo "\t")
-
-# Helper functions
-msg_info() { echo -e "${BL}[INFO]${CL} $1"; }
-msg_ok() { echo -e "${GN}[OK]${CL} $1"; }
-msg_error() { echo -e "${RD}[ERROR]${CL} $1"; }
-
-msg_info "Setting up Speaches dependencies..."
-
-# Install system dependencies
-apt-get update
-apt-get install -y --no-install-recommends \
-  ca-certificates \
-  curl \
-  ffmpeg \
-  git \
-  build-essential \
-  jq \
-  libgl1 \
-  libglib2.0-0 \
-  libgomp1
-
-# Install uv
-if ! command -v uv &> /dev/null; then
-    msg_info "Installing uv..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-fi
-
-# Ensure uv and uvx are in PATH
-export PATH="/root/.local/bin:$PATH"
-
-# Clone repository
-INSTALL_DIR="/opt/speaches"
-if [ ! -d "$INSTALL_DIR" ]; then
-    msg_info "Cloning Speaches repository..."
-    git clone https://github.com/harms-haus/speaches.git "$INSTALL_DIR"
-else
-    msg_info "Speaches repository already exists, skipping clone."
-fi
-
-cd "$INSTALL_DIR"
-
-# Install Python 3.12 if not present (Ubuntu 24.04 has it, but just in case)
-msg_info "Setting up Python environment..."
-uv python install 3.12
-
-# Sync dependencies
-msg_info "Syncing dependencies with uv..."
-uv sync --no-dev
-
-# Create cache directory
-mkdir -p /root/.cache/huggingface/hub
-
-# Copy model manager script
-msg_info "Installing model management script..."
-cat > /usr/local/bin/speaches-models << 'EOF'
-#!/usr/bin/env bash
-
 # Speaches Model Manager for LXC containers
 # Simple script to manage models without requiring the CLI tool
 
@@ -110,7 +35,7 @@ list_available_models() {
     fi
 
     curl -s "$SPEACHES_BASE_URL/v1/registry$task_filter" | jq -r '.data[] | "\(.id) (\(.task))"' 2>/dev/null || {
-        log_error "Failed to fetch models. Is jq installed? Run: apt-get install jq"
+        log_error "Failed to fetch models. Is jq installed?"
         exit 1
     }
 }
@@ -119,7 +44,7 @@ download_model() {
     local model_id="$1"
     if [ -z "$model_id" ]; then
         log_error "Please specify a model ID to download"
-        echo "Usage: speaches-models download <model_id>"
+        echo "Usage: $0 download <model_id>"
         exit 1
     fi
 
@@ -153,7 +78,7 @@ delete_model() {
     local model_id="$1"
     if [ -z "$model_id" ]; then
         log_error "Please specify a model ID to delete"
-        echo "Usage: speaches-models delete <model_id>"
+        echo "Usage: $0 delete <model_id>"
         exit 1
     fi
 
@@ -176,7 +101,7 @@ show_usage() {
 Speaches Model Manager
 
 USAGE:
-    speaches-models <COMMAND> [OPTIONS]
+    $0 <COMMAND> [OPTIONS]
 
 COMMANDS:
     list-available, ls-remote    List all available models in the registry
@@ -187,11 +112,11 @@ COMMANDS:
     delete, rm <model_id>        Delete a downloaded model
 
 EXAMPLES:
-    speaches-models ls-remote       # List all available models
-    speaches-models ls-stt          # List STT models only
-    speaches-models download whisper-1  # Download whisper-1 model
-    speaches-models ls               # List downloaded models
-    speaches-models rm whisper-1     # Delete whisper-1 model
+    $0 ls-remote                    # List all available models
+    $0 ls-stt                       # List STT models only
+    $0 download whisper-1           # Download whisper-1 model
+    $0 ls                           # List downloaded models
+    $0 rm whisper-1                 # Delete whisper-1 model
 
 ENVIRONMENT VARIABLES:
     SPEACHES_BASE_URL               Server URL (default: http://localhost:8000)
@@ -234,34 +159,3 @@ main() {
 }
 
 main "$@"
-EOF
-chmod +x /usr/local/bin/speaches-models
-
-# Create systemd service
-msg_info "Creating systemd service..."
-cat <<EOF >/etc/systemd/system/speaches.service
-[Unit]
-Description=Speaches Service
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=${INSTALL_DIR}
-Environment="UVICORN_HOST=0.0.0.0"
-Environment="UVICORN_PORT=8000"
-Environment="PATH=${INSTALL_DIR}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-ExecStart=${INSTALL_DIR}/.venv/bin/uvicorn --factory speaches.main:create_app
-Restart=always
-User=root
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl daemon-reload
-systemctl enable --now speaches
-
-msg_ok "Speaches has been installed and started!"
-msg_info "Use 'speaches-models' command to manage models"
-msg_info "Example: speaches-models ls-remote"
-
