@@ -42,9 +42,8 @@ apt-get install -y --no-install-recommends \
 if ! command -v uv &> /dev/null; then
     msg_info "Installing uv..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    source $HOME/.cargo/env || true
-    # Add to path for current session if not already there
-    export PATH="$HOME/.local/bin:$PATH"
+    # Add to path for current session
+    export PATH="/root/.local/bin:$PATH"
 fi
 
 # Clone repository
@@ -64,7 +63,7 @@ uv python install 3.12
 
 # Sync dependencies
 msg_info "Syncing dependencies with uv..."
-uv sync --frozen --no-dev
+uv sync --no-dev
 
 # Create cache directory
 mkdir -p /root/.cache/huggingface/hub

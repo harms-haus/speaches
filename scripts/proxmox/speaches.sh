@@ -39,7 +39,7 @@ function update_script() {
   msg_info "Updating Speaches"
   cd /opt/speaches
   git pull
-  /opt/speaches/.venv/bin/uv sync --frozen --no-dev
+  uv sync --no-dev
   systemctl restart speaches
   msg_ok "Updated successfully!"
   exit
