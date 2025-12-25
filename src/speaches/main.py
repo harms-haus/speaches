@@ -95,6 +95,22 @@ def create_app() -> FastAPI:
 
     logger.debug(f"Config: {config}")
 
+    try:
+        import ctranslate2
+        logger.info(f"CTranslate2 CUDA device count: {ctranslate2.get_cuda_device_count()}")
+    except ImportError:
+        logger.warning("CTranslate2 not found, skipping device count check")
+    except Exception:
+        logger.exception("Error checking CTranslate2 CUDA device count")
+
+    try:
+        import onnxruntime as ort
+        logger.info(f"ONNX Runtime available providers: {ort.get_available_providers()}")
+    except ImportError:
+        logger.warning("ONNX Runtime not found, skipping provider check")
+    except Exception:
+        logger.exception("Error checking ONNX Runtime providers")
+
     # Initialize OpenTelemetry if endpoint is configured
     if config.otel_exporter_otlp_endpoint:
         from speaches.tracing import setup_telemetry

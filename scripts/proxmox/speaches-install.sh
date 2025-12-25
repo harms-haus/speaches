@@ -67,178 +67,129 @@ uv python install 3.12
 msg_info "Syncing dependencies with uv..."
 uv sync --no-dev
 
+# Optional: Install CUDA libraries if GPU is detected
+if command -v nvidia-smi &> /dev/null; then
+    msg_info "GPU detected, installing additional CUDA libraries for faster-whisper and Kokoro (ONNX Runtime)..."
+    uv pip install \
+        nvidia-cublas-cu12 \
+        nvidia-cudnn-cu12 \
+        nvidia-cuda-runtime-cu12 \
+        nvidia-cuda-cupti-cu12 \
+        nvidia-cuda-nvrtc-cu12 \
+        nvidia-nvtx-cu12 \
+        nvidia-cuda-nvjitlink-cu12 \
+        nvidia-cusparse-cu12 \
+        nvidia-curand-cu12 \
+        nvidia-cusolver-cu12
+fi
+
 # Create cache directory
 mkdir -p /root/.cache/huggingface/hub
 
 # Copy model manager script
 msg_info "Installing model management script..."
-cat > /usr/local/bin/speaches-models << 'EOF'
-#!/usr/bin/env bash
-
-# Speaches Model Manager for LXC containers
-# Simple script to manage models without requiring the CLI tool
-
-set -e
-
+cat > /usr/local/bin/speaches-models << 'MODEL_EOF'
+#!/bin/bash
 SPEACHES_BASE_URL="${SPEACHES_BASE_URL:-http://localhost:8000}"
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
-
 check_server() {
-    if ! curl -s --max-time 5 "$SPEACHES_BASE_URL/health" >/dev/null 2>&1; then
-        log_error "Cannot connect to Speaches server at $SPEACHES_BASE_URL"
-        log_error "Make sure the server is running and SPEACHES_BASE_URL is set correctly"
-        exit 1
-    fi
-}
-
-list_available_models() {
-    log_info "Fetching available models from registry..."
-    local task_filter=""
-    if [ -n "$1" ]; then
-        task_filter="?task=$1"
-    fi
-
-    curl -s "$SPEACHES_BASE_URL/v1/registry$task_filter" | jq -r '.data[] | "\(.id) (\(.task))"' 2>/dev/null || {
-        log_error "Failed to fetch models. Is jq installed? Run: apt-get install jq"
+    curl -s --max-time 5 "$SPEACHES_BASE_URL/health" >/dev/null 2>&1 || {
+        echo "ERROR: Cannot connect to Speaches server at $SPEACHES_BASE_URL"
         exit 1
     }
 }
 
-download_model() {
-    local model_id="$1"
-    if [ -z "$model_id" ]; then
-        log_error "Please specify a model ID to download"
-        echo "Usage: speaches-models download <model_id>"
-        exit 1
-    fi
-
-    log_info "Downloading model: $model_id"
-    local response
-    response=$(curl -s -w "\n%{http_code}" -X POST "$SPEACHES_BASE_URL/v1/models/$model_id")
-
-    local status_code=$(echo "$response" | tail -n1)
-    local body=$(echo "$response" | head -n -1)
-
-    if [ "$status_code" = "200" ]; then
-        log_success "Model '$model_id' downloaded successfully"
-    elif [ "$status_code" = "201" ]; then
-        log_warn "Model '$model_id' already exists"
-    else
-        log_error "Failed to download model '$model_id' (HTTP $status_code)"
-        echo "Response: $body"
-        exit 1
-    fi
-}
-
-list_downloaded_models() {
-    log_info "Listing downloaded models..."
-    curl -s "$SPEACHES_BASE_URL/v1/models" | jq -r '.data[] | "\(.id) (\(.task))"' 2>/dev/null || {
-        log_error "Failed to list downloaded models"
-        exit 1
-    }
-}
-
-delete_model() {
-    local model_id="$1"
-    if [ -z "$model_id" ]; then
-        log_error "Please specify a model ID to delete"
-        echo "Usage: speaches-models delete <model_id>"
-        exit 1
-    fi
-
-    log_info "Deleting model: $model_id"
-    local response
-    response=$(curl -s -w "\n%{http_code}" -X DELETE "$SPEACHES_BASE_URL/v1/models/$model_id")
-
-    local status_code=$(echo "$response" | tail -n1)
-
-    if [ "$status_code" = "200" ]; then
-        log_success "Model '$model_id' deleted successfully"
-    else
-        log_error "Failed to delete model '$model_id' (HTTP $status_code)"
-        exit 1
-    fi
-}
-
-show_usage() {
-    cat << EOF
-Speaches Model Manager
-
-USAGE:
-    speaches-models <COMMAND> [OPTIONS]
-
-COMMANDS:
-    list-available, ls-remote    List all available models in the registry
-    list-stt, ls-stt             List available speech-to-text models
-    list-tts, ls-tts             List available text-to-speech models
-    download, dl <model_id>      Download a specific model
-    list-downloaded, ls          List downloaded models
-    delete, rm <model_id>        Delete a downloaded model
-
-EXAMPLES:
-    speaches-models ls-remote       # List all available models
-    speaches-models ls-stt          # List STT models only
-    speaches-models download whisper-1  # Download whisper-1 model
-    speaches-models ls               # List downloaded models
-    speaches-models rm whisper-1     # Delete whisper-1 model
-
-ENVIRONMENT VARIABLES:
-    SPEACHES_BASE_URL               Server URL (default: http://localhost:8000)
-
-EOF
-}
-
-main() {
-    check_server
-
-    case "$1" in
-        "list-available"|"ls-remote")
-            list_available_models
-            ;;
-        "list-stt"|"ls-stt")
-            list_available_models "automatic-speech-recognition"
-            ;;
-        "list-tts"|"ls-tts")
-            list_available_models "text-to-speech"
-            ;;
-        "download"|"dl")
-            download_model "$2"
-            ;;
-        "list-downloaded"|"ls")
-            list_downloaded_models
-            ;;
-        "delete"|"rm")
-            delete_model "$2"
-            ;;
-        "help"|"-h"|"--help"|"")
-            show_usage
-            ;;
-        *)
-            log_error "Unknown command: $1"
-            echo ""
-            show_usage
-            exit 1
-            ;;
-    esac
-}
-
-main "$@"
-EOF
+case "$1" in
+    ls-remote)
+        check_server
+        echo "Available models:"
+        curl -s "$SPEACHES_BASE_URL/v1/registry" | jq -r '.data[] | "\(.id) (\(.task))"' 2>/dev/null || echo "Install jq: apt-get install jq"
+        ;;
+    ls-stt)
+        check_server
+        echo "STT models:"
+        curl -s "$SPEACHES_BASE_URL/v1/registry?task=automatic-speech-recognition" | jq -r '.data[] | "\(.id)"' 2>/dev/null || echo "Install jq: apt-get install jq"
+        ;;
+    ls-tts)
+        check_server
+        echo "TTS models:"
+        curl -s "$SPEACHES_BASE_URL/v1/registry?task=text-to-speech" | jq -r '.data[] | "\(.id)"' 2>/dev/null || echo "Install jq: apt-get install jq"
+        ;;
+    download)
+        check_server
+        [ -z "$2" ] && echo "Usage: speaches-models download <model_id>" && exit 1
+        echo "Downloading $2..."
+        response=$(curl -s -w "\n%{http_code}" -X POST "$SPEACHES_BASE_URL/v1/models/$2")
+        status=$(echo "$response" | tail -n1)
+        if [ "$status" = "200" ]; then
+            echo "SUCCESS: Model downloaded"
+        elif [ "$status" = "201" ]; then
+            echo "WARNING: Model already exists"
+        else
+            echo "ERROR: Failed to download (HTTP $status)"
+        fi
+        ;;
+    ls)
+        check_server
+        echo "Downloaded models:"
+        curl -s "$SPEACHES_BASE_URL/v1/models" | jq -r '.data[] | "\(.id) (\(.task))"' 2>/dev/null || echo "Install jq: apt-get install jq"
+        ;;
+    rm)
+        check_server
+        [ -z "$2" ] && echo "Usage: speaches-models rm <model_id>" && exit 1
+        echo "Deleting $2..."
+        status=$(curl -s -w "%{http_code}" -X DELETE "$SPEACHES_BASE_URL/v1/models/$2")
+        if [ "$status" = "200" ]; then
+            echo "SUCCESS: Model deleted"
+        else
+            echo "ERROR: Failed to delete (HTTP $status)"
+        fi
+        ;;
+    *)
+        echo "Speaches Model Manager"
+        echo ""
+        echo "Usage: speaches-models <command> [model_id]"
+        echo ""
+        echo "Commands:"
+        echo "  ls-remote          List all available models"
+        echo "  ls-stt            List speech-to-text models"
+        echo "  ls-tts            List text-to-speech models"
+        echo "  download <model>   Download a model"
+        echo "  ls                 List downloaded models"
+        echo "  rm <model>         Delete a model"
+        echo ""
+        echo "Examples:"
+        echo "  speaches-models ls-remote"
+        echo "  speaches-models download whisper-1"
+        echo "  speaches-models ls"
+        ;;
+esac
+MODEL_EOF
 chmod +x /usr/local/bin/speaches-models
 
 # Create systemd service
 msg_info "Creating systemd service..."
+# Detect if we should add LD_LIBRARY_PATH for NVIDIA libraries
+LD_LIBRARY_PATH_ENV=""
+if command -v nvidia-smi &> /dev/null; then
+    # Construct LD_LIBRARY_PATH with all potential NVIDIA library locations
+    NVIDIA_LIBS=""
+    # Note: package names like nvidia-cublas-cu12 often map to directory names like nvidia/cublas
+    for lib in cublas cudnn cuda_runtime cuda_cupti cuda_nvrtc nvtx cuda_nvjitlink cusparse curand cusolver; do
+        LIB_PATH="${INSTALL_DIR}/.venv/lib/python3.12/site-packages/nvidia/${lib}/lib"
+        if [ -d "$LIB_PATH" ]; then
+            if [ -z "$NVIDIA_LIBS" ]; then
+                NVIDIA_LIBS="$LIB_PATH"
+            else
+                NVIDIA_LIBS="$NVIDIA_LIBS:$LIB_PATH"
+            fi
+        fi
+    done
+    if [ -n "$NVIDIA_LIBS" ]; then
+        LD_LIBRARY_PATH_ENV="Environment=\"LD_LIBRARY_PATH=$NVIDIA_LIBS\""
+    fi
+fi
+
 cat <<EOF >/etc/systemd/system/speaches.service
 [Unit]
 Description=Speaches Service
@@ -249,6 +200,9 @@ Type=simple
 WorkingDirectory=${INSTALL_DIR}
 Environment="UVICORN_HOST=0.0.0.0"
 Environment="UVICORN_PORT=8000"
+${LD_LIBRARY_PATH_ENV}
+# Uncomment the line below to force CUDA usage for Whisper. Default is "auto".
+# Environment="WHISPER__INFERENCE_DEVICE=cuda"
 Environment="PATH=${INSTALL_DIR}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ExecStart=${INSTALL_DIR}/.venv/bin/uvicorn --factory speaches.main:create_app
 Restart=always
