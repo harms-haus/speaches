@@ -26,11 +26,19 @@ class OrtOptions(BaseModel):
     """
     List of ORT providers to exclude from the inference session.
     """
-    provider_priority: dict[str, int] = {"CUDAExecutionProvider": 100}
+    provider_priority: dict[str, int] = {
+        "CUDAExecutionProvider": 100,
+        "CPUExecutionProvider": 0,
+    }
     """
     Dictionary of ORT providers and their priority. The higher the value, the higher the priority. Default priority for a provider if not specified is 0.
     """
-    provider_opts: dict[str, dict[str, Any]] = {}
+    provider_opts: dict[str, dict[str, Any]] = {
+        "CUDAExecutionProvider": {
+            "device_id": 0,
+            "arena_extend_strategy": "kSameAsRequested",
+        }
+    }
     """
     Dictionary of ORT provider options. The keys are provider names, and the values are dictionaries of options.
     Example: {"CUDAExecutionProvider": {"cudnn_conv_algo_search": "DEFAULT"}}

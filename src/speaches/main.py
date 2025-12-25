@@ -105,7 +105,10 @@ def create_app() -> FastAPI:
 
     try:
         import onnxruntime as ort
-        logger.info(f"ONNX Runtime available providers: {ort.get_available_providers()}")
+        available_providers = ort.get_available_providers()
+        logger.info(f"ONNX Runtime available providers: {available_providers}")
+        if "CUDAExecutionProvider" not in available_providers:
+            logger.warning("CUDAExecutionProvider NOT found in ONNX Runtime available providers. GPU acceleration for Kokoro/Piper will NOT work.")
     except ImportError:
         logger.warning("ONNX Runtime not found, skipping provider check")
     except Exception:

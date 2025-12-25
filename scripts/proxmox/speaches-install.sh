@@ -185,6 +185,10 @@ if command -v nvidia-smi &> /dev/null; then
             fi
         fi
     done
+    
+    # Add common system library paths as fallback
+    NVIDIA_LIBS="$NVIDIA_LIBS:/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu"
+    
     if [ -n "$NVIDIA_LIBS" ]; then
         LD_LIBRARY_PATH_ENV="Environment=\"LD_LIBRARY_PATH=$NVIDIA_LIBS\""
     fi
@@ -201,6 +205,8 @@ WorkingDirectory=${INSTALL_DIR}
 Environment="UVICORN_HOST=0.0.0.0"
 Environment="UVICORN_PORT=8000"
 ${LD_LIBRARY_PATH_ENV}
+# Forces ONNX Runtime to use CUDA if available
+Environment="UNSTABLE_ORT_OPTS__PROVIDER_PRIORITY__CUDAExecutionProvider=100"
 # Uncomment the line below to force CUDA usage for Whisper. Default is "auto".
 # Environment="WHISPER__INFERENCE_DEVICE=cuda"
 Environment="PATH=${INSTALL_DIR}/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"

@@ -194,7 +194,9 @@ class KokoroModelManager(BaseModelManager[Kokoro]):
     def _load_fn(self, model_id: str) -> Kokoro:
         model_files = kokoro_model_registry.get_model_files(model_id)
         providers = get_ort_providers_with_options(self.ort_opts)
+        logger.info(f"Loading Kokoro with providers: {providers}")
         inf_sess = InferenceSession(model_files.model, providers=providers)
+        logger.info(f"Kokoro InferenceSession active providers: {inf_sess.get_providers()}")
         return Kokoro.from_session(inf_sess, str(model_files.voices))
 
     @traced_generator()
