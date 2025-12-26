@@ -70,17 +70,18 @@ uv sync --no-dev
 # Optional: Install CUDA libraries if GPU is detected
 if command -v nvidia-smi &> /dev/null; then
     msg_info "GPU detected, installing additional CUDA libraries for faster-whisper and Kokoro (ONNX Runtime)..."
-    uv pip install \
+    uv pip install --extra-index-url https://pypi.nvidia.com \
         nvidia-cublas-cu12 \
         nvidia-cudnn-cu12 \
         nvidia-cuda-runtime-cu12 \
         nvidia-cuda-cupti-cu12 \
         nvidia-cuda-nvrtc-cu12 \
         nvidia-nvtx-cu12 \
-        nvidia-cuda-nvjitlink-cu12 \
+        nvidia-nvjitlink-cu12 \
         nvidia-cusparse-cu12 \
         nvidia-curand-cu12 \
-        nvidia-cusolver-cu12
+        nvidia-cusolver-cu12 \
+        nvidia-cufft-cu12
 fi
 
 # Create cache directory
@@ -175,7 +176,7 @@ if command -v nvidia-smi &> /dev/null; then
     # Construct LD_LIBRARY_PATH with all potential NVIDIA library locations
     NVIDIA_LIBS=""
     # Note: package names like nvidia-cublas-cu12 often map to directory names like nvidia/cublas
-    for lib in cublas cudnn cuda_runtime cuda_cupti cuda_nvrtc nvtx cuda_nvjitlink cusparse curand cusolver; do
+    for lib in cublas cudnn cuda_runtime cuda_cupti cuda_nvrtc nvtx nvjitlink cusparse curand cusolver cufft; do
         LIB_PATH="${INSTALL_DIR}/.venv/lib/python3.12/site-packages/nvidia/${lib}/lib"
         if [ -d "$LIB_PATH" ]; then
             if [ -z "$NVIDIA_LIBS" ]; then
